@@ -684,7 +684,7 @@ function TickerCard({ symbol, data, onRemove }) {
               <Stat label="市值" value={data.fundamentals.marketCap} />
               <Stat label="EPS" value={data.fundamentals.eps} />
               <Stat label="預估EPS" value={data.fundamentals.epsForward} />
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 4 }}>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 4 }}>
                 P/E 隨即時股價自動計算 · EPS 由 Claude 每季更新
               </div>
             </div>
@@ -818,7 +818,7 @@ function IndexPanel({ data }) {
             </div>
           </div>
           {data.week52 && (
-            <div style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#A89878' }}>
+            <div style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 14.5, color: '#6B5A3E' }}>
               <div>52週高 {data.week52.high.toLocaleString()}</div>
               <div>52週低 {data.week52.low.toLocaleString()}</div>
             </div>
@@ -835,7 +835,7 @@ function IndexPanel({ data }) {
             <div style={{ marginTop: 10 }}>
               <Stat label="Trailing EPS（估）" value={data.epsTrailing} />
               {data.epsTrailingNote && (
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 2 }}>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 2 }}>
                   {data.epsTrailingNote}
                 </div>
               )}
@@ -845,14 +845,14 @@ function IndexPanel({ data }) {
               <div style={{ marginTop: 10 }}>
                 <Stat label="預估今年EPS" value={data.epsForward} />
                 {data.epsForwardNote && (
-                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 2 }}>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 2 }}>
                     {data.epsForwardNote}
                   </div>
                 )}
               </div>
             )}
 
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 6 }}>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 6 }}>
               P/E 隨即時股價自動計算 · EPS 數字由 Claude 每季更新
             </div>
 
@@ -862,7 +862,7 @@ function IndexPanel({ data }) {
               </div>
               <PERuler range={{ ...data.peRange, current: computePE(data.level, data.epsTrailing) }} />
               {data.peRangeNote && (
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 6 }}>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 6 }}>
                   {data.peRangeNote}
                 </div>
               )}
@@ -886,7 +886,7 @@ function IndexPanel({ data }) {
             </a>
 
             {data.note && (
-              <div style={{ marginTop: 10, fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#A89878', lineHeight: 1.5 }}>
+              <div style={{ marginTop: 10, fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#6B5A3E', lineHeight: 1.5 }}>
                 註：{data.note}
               </div>
             )}
@@ -898,7 +898,7 @@ function IndexPanel({ data }) {
             <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C', marginBottom: 6 }}>
               本益比資訊
             </div>
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#8A7A5C', lineHeight: 1.6 }}>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#6B5A3E', lineHeight: 1.6 }}>
               {data.note}
             </div>
           </div>
@@ -1084,7 +1084,7 @@ function StockDashboard() {
               </div>
             )}
           </div>
-          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#A89878', marginTop: 4 }}>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#6B5A3E', marginTop: 4 }}>
             {workerMissing
               ? '尚未連接即時資料 · 請在程式碼中設定 WORKER_URL'
               : '大盤指數與個股股價每次開啟自動更新（來源Yahoo Finance） · P/E、EPS等進階數據請 Claude 手動更新'}
@@ -1130,7 +1130,7 @@ function StockDashboard() {
         {/* Cards */}
         <div style={{ display: 'grid', gap: 10 }}>
           {Object.keys(tickers).length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#A89878', fontFamily: 'Inter, sans-serif', fontSize: 15 }}>
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#6B5A3E', fontFamily: 'Inter, sans-serif', fontSize: 15 }}>
               尚未追蹤任何股票，輸入代號開始追蹤
             </div>
           )}
