@@ -324,15 +324,17 @@ const initialIndexList = [
 ];
 
 // ---- Seed data (placeholder — user will ask Claude to refresh with live search) ----
-// ---- Live data auto-refresh via Yahoo Finance (through a Cloudflare Worker
+// ---- Live price auto-refresh via Yahoo Finance (through a Cloudflare Worker
 // CORS proxy — Yahoo's endpoints don't allow direct browser calls). ----
 // Deploy the included cloudflare-worker.js at workers.cloudflare.com (free,
 // no credit card), then paste the resulting https://xxx.workers.dev URL below.
-// This single endpoint covers both index-level quotes (real point values,
-// not an ETF proxy) and individual stock quotes, including trailingPE,
-// forwardPE, epsTrailingTwelveMonths, and epsForward where Yahoo populates
-// them. Some fields may come back null for index tickers — the app falls
-// back to the last manually-set value in that case rather than blanking it.
+// This covers real price/change for both index-level quotes (actual index
+// points, not an ETF proxy) and individual stock quotes.
+// P/E, EPS, and forward estimates are NOT included here — Yahoo's endpoint
+// for those (v7/finance/quote) now requires an auth "crumb" token that
+// isn't reliably obtainable without a browser session, so this worker uses
+// v8/finance/chart instead, which only exposes price data. Those fields
+// stay manually updated by Claude.
 const WORKER_URL = 'https://yahoo-proxy.yalene-chen.workers.dev';
 
 async function fetchYahooQuotes(symbols) {
@@ -356,23 +358,11 @@ async function fetchYahooQuotes(symbols) {
 }
 
 function extractLiveFields(q) {
-  if (!q) return null;
-  const marketCapRaw = q.marketCap;
-  let marketCap = null;
-  if (typeof marketCapRaw === 'number') {
-    if (marketCapRaw >= 1e12) marketCap = (marketCapRaw / 1e12).toFixed(2) + 'T';
-    else if (marketCapRaw >= 1e9) marketCap = (marketCapRaw / 1e9).toFixed(2) + 'B';
-    else if (marketCapRaw >= 1e6) marketCap = (marketCapRaw / 1e6).toFixed(2) + 'M';
-  }
+  if (!q || q.error) return null;
   return {
     price: q.regularMarketPrice ?? null,
     change: q.regularMarketChange ?? null,
     changePct: q.regularMarketChangePercent ?? null,
-    peTrailing: q.trailingPE ?? null,
-    peForward: q.forwardPE ?? null,
-    eps: q.epsTrailingTwelveMonths ?? null,
-    epsForward: q.epsForward ?? null,
-    marketCap,
   };
 }
 
@@ -955,7 +945,7 @@ function StockDashboard() {
   const [workerMissing, setWorkerMissing] = useState(false);
 
   const applyLiveUpdate = (bySymbol) => {
-    // Update indices
+    // Update indices — price/change only; P/E, forward EPS stay manual.
     setIndexData(prev => prev.map(idx => {
       const live = extractLiveFields(bySymbol[idx.yahooSymbol]);
       if (!live) return idx;
@@ -964,17 +954,11 @@ function StockDashboard() {
         level: live.price ?? idx.level,
         change: live.change ?? idx.change,
         changePct: live.changePct ?? idx.changePct,
-        peTrailing: live.peTrailing ?? idx.peTrailing,
-        peForward: live.peForward ?? idx.peForward,
-        epsForward: live.epsForward ?? idx.epsForward,
-        // Once we have a real live forward-EPS figure, the old manual
-        // estimation-methodology note no longer applies.
-        epsForwardNote: live.epsForward != null ? null : idx.epsForwardNote,
         lastUpdated: new Date().toISOString(),
       };
     }));
 
-    // Update individual stocks
+    // Update individual stocks — price/change only; fundamentals stay manual.
     setTickers(prev => {
       const next = { ...prev };
       for (const sym of Object.keys(next)) {
@@ -986,14 +970,6 @@ function StockDashboard() {
           change: live.change ?? next[sym].change,
           changePct: live.changePct ?? next[sym].changePct,
           lastUpdated: new Date().toISOString(),
-          fundamentals: {
-            ...next[sym].fundamentals,
-            pe: live.peTrailing ?? next[sym].fundamentals.pe,
-            peForward: live.peForward ?? next[sym].fundamentals.peForward,
-            eps: live.eps ?? next[sym].fundamentals.eps,
-            epsForward: live.epsForward ?? next[sym].fundamentals.epsForward,
-            marketCap: live.marketCap ?? next[sym].fundamentals.marketCap,
-          },
         };
       }
       return next;
@@ -1090,7 +1066,7 @@ function StockDashboard() {
           <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#A89878', marginTop: 4 }}>
             {workerMissing
               ? '尚未連接即時資料 · 請在程式碼中設定 WORKER_URL'
-              : '大盤指數與個股股價每次開啟自動更新（含P/E、EPS，來源Yahoo Finance） · 其餘進階數據請 Claude 手動更新'}
+              : '大盤指數與個股股價每次開啟自動更新（來源Yahoo Finance） · P/E、EPS等進階數據請 Claude 手動更新'}
           </p>
         </div>
 
