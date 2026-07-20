@@ -112,8 +112,8 @@ const initialIndexList = [
     change: -433.11,
     changePct: -1.49,
     lastUpdated: '2026-07-17T17:15:59',
-    peTrailing: 31.89,
-    peForward: 27.44,
+    epsTrailing: 897.06,
+    epsTrailingNote: '以2026/7/17指數點位除以當時Trailing P/E反推估算',
     epsForward: 1042,
     epsForwardNote: '以指數點位除以Forward P/E反推估算，非官方直接公布數字',
     peRange: { low: 12.42, high: 38.78, median: 24.59, current: 31.89 },
@@ -184,8 +184,8 @@ const initialIndexList = [
     change: -76.08,
     changePct: -1.01,
     lastUpdated: '2026-07-17T17:15:59',
-    peTrailing: 25.27,
-    peForward: 20.30,
+    epsTrailing: 295.09,
+    epsTrailingNote: '以2026/7/17指數點位除以當時Trailing P/E反推估算',
     epsForward: 320,
     epsForwardNote: '2026年市場共識預估區間約$300–320，此處採區間上緣',
     peRange: { low: 15.0, high: 30.0, median: 22.95, current: 25.27 },
@@ -258,8 +258,8 @@ const initialIndexList = [
     change: -361.66,
     changePct: -1.40,
     lastUpdated: '2026-07-17T17:15:59',
-    peTrailing: null,
-    peForward: null,
+    epsTrailing: null,
+    epsForward: null,
     peRange: null,
     peChartUrl: null,
     peChartSource: null,
@@ -506,6 +506,11 @@ const seedTickers = {
   },
 };
 
+function computePE(price, eps) {
+  if (price == null || eps == null || eps === 0) return null;
+  return Number((price / eps).toFixed(2));
+}
+
 function timeAgoTone(iso) {
   const hrs = (Date.now() - new Date(iso).getTime()) / 36e5;
   if (hrs < 6) return { label: 'fresh', color: '#0F9D58' };
@@ -674,11 +679,14 @@ function TickerCard({ symbol, data, onRemove }) {
                 <BarChart3 size={13} color="#8A7A5C" />
                 <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>基本面</span>
               </div>
-              <Stat label="本益比 (Trailing P/E)" value={data.fundamentals.pe} />
-              <Stat label="Forward P/E" value={data.fundamentals.peForward} />
+              <Stat label="本益比 (Trailing P/E)" value={computePE(data.price, data.fundamentals.eps)} />
+              <Stat label="Forward P/E" value={computePE(data.price, data.fundamentals.epsForward)} />
               <Stat label="市值" value={data.fundamentals.marketCap} />
               <Stat label="EPS" value={data.fundamentals.eps} />
               <Stat label="預估EPS" value={data.fundamentals.epsForward} />
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 4 }}>
+                P/E 隨即時股價自動計算 · EPS 由 Claude 每季更新
+              </div>
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -817,11 +825,20 @@ function IndexPanel({ data }) {
           )}
         </div>
 
-        {data.peTrailing !== null ? (
+        {data.epsTrailing != null ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, paddingTop: 16, borderTop: '1px solid #E8ECF0' }}>
-              <PEHighlight label="Trailing P/E" value={data.peTrailing} />
-              <PEHighlight label="Forward P/E" value={data.peForward} />
+              <PEHighlight label="Trailing P/E" value={computePE(data.level, data.epsTrailing)} />
+              <PEHighlight label="Forward P/E" value={computePE(data.level, data.epsForward)} />
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <Stat label="Trailing EPS（估）" value={data.epsTrailing} />
+              {data.epsTrailingNote && (
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 2 }}>
+                  {data.epsTrailingNote}
+                </div>
+              )}
             </div>
 
             {data.epsForward != null && (
@@ -835,11 +852,15 @@ function IndexPanel({ data }) {
               </div>
             )}
 
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 6 }}>
+              P/E 隨即時股價自動計算 · EPS 數字由 Claude 每季更新
+            </div>
+
             <div style={{ marginTop: 8 }}>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C', marginBottom: 4 }}>
                 歷史本益比區間定位
               </div>
-              <PERuler range={data.peRange} />
+              <PERuler range={{ ...data.peRange, current: computePE(data.level, data.epsTrailing) }} />
               {data.peRangeNote && (
                 <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 6 }}>
                   {data.peRangeNote}
