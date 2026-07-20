@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>持股追蹤台</title>
+
+<meta name="theme-color" content="#FAF6EC" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="持股追蹤台" />
+
+<link rel="manifest" href="./manifest.json" />
+<link rel="apple-touch-icon" href="./icon-180.png" />
+<link rel="icon" href="./icon.svg" type="image/svg+xml" />
+<link rel="icon" href="./icon-512.png" type="image/png" sizes="512x512" />
+
+<style>
+  html, body { margin: 0; padding: 0; background: #FAF6EC; overscroll-behavior-y: none; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  #root { min-height: 100vh; }
+  input, button { font-family: inherit; }
+</style>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/prop-types@15/prop-types.min.js" crossorigin></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js" crossorigin></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { createElement: h } = React;
+
+// Hand-rolled minimal icon set (avoids depending on an external icon
+// library's UMD internals, which are not a stable public API).
+function makeIcon(paths) {
+  return function Icon({ size = 24, color = 'currentColor', style }) {
+    return h('svg', {
+      width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+      stroke: color, strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', style,
+    }, paths.map((p, i) => h(p.tag, { key: i, ...p.attrs })));
+  };
+}
+const Plus = makeIcon([
+  { tag: 'path', attrs: { d: 'M5 12h14' } },
+  { tag: 'path', attrs: { d: 'M12 5v14' } },
+]);
+const X = makeIcon([
+  { tag: 'path', attrs: { d: 'M18 6 6 18' } },
+  { tag: 'path', attrs: { d: 'm6 6 12 12' } },
+]);
+const RefreshCw = makeIcon([
+  { tag: 'path', attrs: { d: 'M3 12a9 9 0 0 1 15-6.7L21 8' } },
+  { tag: 'path', attrs: { d: 'M21 3v5h-5' } },
+  { tag: 'path', attrs: { d: 'M21 12a9 9 0 0 1-15 6.7L3 16' } },
+  { tag: 'path', attrs: { d: 'M8 16H3v5' } },
+]);
+const TrendingUp = makeIcon([
+  { tag: 'polyline', attrs: { points: '22 7 13.5 15.5 8.5 10.5 2 17' } },
+  { tag: 'polyline', attrs: { points: '16 7 22 7 22 13' } },
+]);
+const TrendingDown = makeIcon([
+  { tag: 'polyline', attrs: { points: '22 17 13.5 8.5 8.5 13.5 2 7' } },
+  { tag: 'polyline', attrs: { points: '16 17 22 17 22 11' } },
+]);
+const Newspaper = makeIcon([
+  { tag: 'path', attrs: { d: 'M4 22h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2' } },
+  { tag: 'path', attrs: { d: 'M18 14h-8' } },
+  { tag: 'path', attrs: { d: 'M15 18h-5' } },
+  { tag: 'path', attrs: { d: 'M10 6h8v4h-8V6Z' } },
+]);
+const BarChart3 = makeIcon([
+  { tag: 'path', attrs: { d: 'M3 3v18h18' } },
+  { tag: 'path', attrs: { d: 'M18 17V9' } },
+  { tag: 'path', attrs: { d: 'M13 17V5' } },
+  { tag: 'path', attrs: { d: 'M8 17v-3' } },
+]);
+const Activity = makeIcon([
+  { tag: 'path', attrs: { d: 'M22 12h-4l-3 9L9 3l-3 9H2' } },
+]);
+const ChevronDown = makeIcon([{ tag: 'path', attrs: { d: 'm6 9 6 6 6-6' } }]);
+const ChevronUp = makeIcon([{ tag: 'path', attrs: { d: 'm18 15-6-6-6 6' } }]);
+const LineChartIcon = makeIcon([
+  { tag: 'path', attrs: { d: 'M3 3v18h18' } },
+  { tag: 'path', attrs: { d: 'm19 9-5 5-4-4-3 3' } },
+]);
+
+const { useState, useMemo, useEffect } = React;
+const { ComposedChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } = Recharts;
+
+// ---- Macro context — refresh by asking Claude to search for latest ----
+const fedRate = {
+  low: 3.50,
+  high: 3.75,
+  effective: 3.63,
+  lastUpdated: '2026-07-17T16:15:00',
+  note: '目標區間維持不變，為近期FOMC會議決議',
+};
+
+// ---- Index data (major US benchmarks) — refresh by asking Claude to search for latest ----
+const initialIndexList = [
+  {
+    name: 'Nasdaq-100',
+    symbol: 'NDX',
+    yahooSymbol: '^NDX',
+    level: 28592.66,
+    change: -433.11,
+    changePct: -1.49,
+    lastUpdated: '2026-07-17T17:15:59',
+    peTrailing: 31.89,
+    peForward: 27.44,
+    epsForward: 1042,
+    epsForwardNote: '以指數點位除以Forward P/E反推估算，非官方直接公布數字',
+    peRange: { low: 12.42, high: 38.78, median: 24.59, current: 31.89 },
+    peChartUrl: 'https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio',
+    peChartSource: 'GuruFocus',
+    description: 'Nasdaq-100 是那斯達克掛牌的100家最大非金融公司組成的指數，科技股權重極高（前七大公司約占近半權重），常被視為科技與成長股的溫度計。',
+    week52: { low: 22673.88, high: 30762.20 },
+    history: [
+      { d: '7/25', o: 27562.68, h: 27617.83, l: 27026.18, c: 27540.81 },
+      { d: '8/1', o: 27540.81, h: 27721.32, l: 27262.87, c: 27504.67 },
+      { d: '8/8', o: 27504.67, h: 27673.76, l: 27186.27, c: 27499.06 },
+      { d: '8/15', o: 27499.06, h: 28008.89, l: 27315.19, c: 27896.03 },
+      { d: '8/22', o: 27896.03, h: 28214.35, l: 27861.21, c: 27882.18 },
+      { d: '8/29', o: 27882.18, h: 28199.58, l: 27065.18, c: 27180.88 },
+      { d: '9/5', o: 27180.88, h: 27601.21, l: 26866.95, c: 27392.39 },
+      { d: '9/12', o: 27392.39, h: 27399.74, l: 27254.56, c: 27309.88 },
+      { d: '9/19', o: 27309.88, h: 27378.83, l: 27094.62, c: 27252.39 },
+      { d: '9/26', o: 27252.39, h: 27485.4, l: 26746.28, c: 27358.29 },
+      { d: '10/3', o: 27358.29, h: 27658.43, l: 27224.91, c: 27521.93 },
+      { d: '10/10', o: 27521.93, h: 28274.4, l: 27338.84, c: 28147.89 },
+      { d: '10/17', o: 28147.89, h: 28748.61, l: 28020.25, c: 28531.25 },
+      { d: '10/24', o: 28531.25, h: 28655.46, l: 28360.22, c: 28639.36 },
+      { d: '10/31', o: 28639.36, h: 28805.11, l: 28243.79, c: 28310.3 },
+      { d: '11/7', o: 28310.3, h: 28727.32, l: 27603.07, c: 27844.2 },
+      { d: '11/14', o: 27844.2, h: 28145.04, l: 27751.59, c: 28017.78 },
+      { d: '11/21', o: 28017.78, h: 29003.73, l: 28013.65, c: 28729.42 },
+      { d: '11/28', o: 28729.42, h: 28862.9, l: 28690.82, c: 28802.68 },
+      { d: '12/5', o: 28802.68, h: 29052.62, l: 28593.57, c: 28799.4 },
+      { d: '12/12', o: 28799.4, h: 29190.68, l: 28566.48, c: 29126.9 },
+      { d: '12/19', o: 29126.9, h: 29337.41, l: 28330.63, c: 28417.26 },
+      { d: '12/26', o: 28417.26, h: 28696.19, l: 28301.91, c: 28308.68 },
+      { d: '1/2', o: 28308.68, h: 29056.52, l: 28227.4, c: 28609.5 },
+      { d: '1/9', o: 28609.5, h: 29481.78, l: 28583.15, c: 29110.78 },
+      { d: '1/16', o: 29110.78, h: 29231.01, l: 28774.95, c: 29037.09 },
+      { d: '1/23', o: 29037.09, h: 29321.58, l: 28706.45, c: 29286.19 },
+      { d: '1/30', o: 29286.19, h: 29662.22, l: 29124.79, c: 29469.75 },
+      { d: '2/6', o: 29469.75, h: 30506.81, l: 29302.14, c: 29937.79 },
+      { d: '2/13', o: 29937.79, h: 30070.92, l: 29262.48, c: 29391.78 },
+      { d: '2/20', o: 29391.78, h: 29894.62, l: 29391.24, c: 29745.32 },
+      { d: '2/27', o: 29745.32, h: 30155.78, l: 28743.28, c: 28987.96 },
+      { d: '3/6', o: 28987.96, h: 29087.17, l: 27371.62, c: 27673.1 },
+      { d: '3/13', o: 27673.1, h: 27771.87, l: 27340.7, c: 27420.61 },
+      { d: '3/20', o: 27420.61, h: 27442.06, l: 26749.65, c: 27017.95 },
+      { d: '3/27', o: 27017.95, h: 27540.98, l: 26756.5, c: 27492.61 },
+      { d: '4/3', o: 27492.61, h: 28068.19, l: 27491.91, c: 27870.82 },
+      { d: '4/10', o: 27870.82, h: 28379.94, l: 27248.05, c: 27309.4 },
+      { d: '4/17', o: 27309.4, h: 28078.56, l: 27024.67, c: 27775.1 },
+      { d: '4/24', o: 27775.1, h: 27802.24, l: 27253.4, c: 27324.04 },
+      { d: '5/1', o: 27324.04, h: 27712.5, l: 26956.6, c: 27330.81 },
+      { d: '5/8', o: 27330.81, h: 27547.4, l: 27106.57, c: 27235.42 },
+      { d: '5/15', o: 27235.42, h: 27675.96, l: 27080.2, c: 27340.53 },
+      { d: '5/22', o: 27340.53, h: 27804.2, l: 27226.44, c: 27792.62 },
+      { d: '5/29', o: 27792.62, h: 28443.24, l: 27749.17, c: 28162.03 },
+      { d: '6/5', o: 28162.03, h: 28433.62, l: 27706.87, c: 28390.08 },
+      { d: '6/12', o: 28390.08, h: 28913.97, l: 28317.31, c: 28773.32 },
+      { d: '6/19', o: 28773.32, h: 29437.86, l: 28682.29, c: 29072.93 },
+      { d: '6/26', o: 29072.93, h: 29133.67, l: 28607.33, c: 28797.15 },
+      { d: '7/3', o: 28797.15, h: 29130.76, l: 28467.08, c: 28477.14 },
+      { d: '7/10', o: 28477.14, h: 28731.67, l: 28183.89, c: 28287.5 },
+      { d: '7/17', o: 28287.5, h: 28710.92, l: 28176.24, c: 28592.66 },
+    ],
+  },
+  {
+    name: 'S&P 500',
+    symbol: 'SPX',
+    yahooSymbol: '^GSPC',
+    level: 7457.69,
+    change: -76.08,
+    changePct: -1.01,
+    lastUpdated: '2026-07-17T17:15:59',
+    peTrailing: 25.27,
+    peForward: 20.30,
+    epsForward: 320,
+    epsForwardNote: '2026年市場共識預估區間約$300–320，此處採區間上緣',
+    peRange: { low: 15.0, high: 30.0, median: 22.95, current: 25.27 },
+    peRangeNote: '低/高採用排除2008年獲利崩跌扭曲後的典型交易區間；中位數為近5年中位數，而非全歷史中位數(5.31–131.39區間對應之18.02)',
+    peChartUrl: 'https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio',
+    peChartSource: 'GuruFocus',
+    description: 'S&P 500 涵蓋美國最大的500家上市公司，橫跨各產業，是最廣泛用來代表「美股大盤」整體表現的指數。',
+    week52: null,
+    note: '歷史極端值受2008-09獲利崩跌影響（本益比短暫飆破100），非典型估值狀態',
+    history: [
+      { d: '7/25', o: 5880.35, h: 5979.38, l: 5734.63, c: 5827.99 },
+      { d: '8/1', o: 5827.99, h: 5944.33, l: 5746.73, c: 5936.39 },
+      { d: '8/8', o: 5936.39, h: 6001.69, l: 5922.5, c: 5953.72 },
+      { d: '8/15', o: 5953.72, h: 6178.31, l: 5912.3, c: 6025.74 },
+      { d: '8/22', o: 6025.74, h: 6224.12, l: 5999.4, c: 6150.54 },
+      { d: '8/29', o: 6150.54, h: 6240.09, l: 6116.43, c: 6216.6 },
+      { d: '9/5', o: 6216.6, h: 6317.81, l: 6203.81, c: 6253.26 },
+      { d: '9/12', o: 6253.26, h: 6548.07, l: 6231.5, c: 6465.19 },
+      { d: '9/19', o: 6465.19, h: 6563.66, l: 6441.11, c: 6499.17 },
+      { d: '9/26', o: 6499.17, h: 6600.92, l: 6478.9, c: 6480.72 },
+      { d: '10/3', o: 6480.72, h: 6574.7, l: 6370.47, c: 6501.97 },
+      { d: '10/10', o: 6501.97, h: 6686.9, l: 6485.88, c: 6656.99 },
+      { d: '10/17', o: 6656.99, h: 6745.77, l: 6612.08, c: 6679.49 },
+      { d: '10/24', o: 6679.49, h: 6744.75, l: 6652.61, c: 6742.22 },
+      { d: '10/31', o: 6742.22, h: 6905.84, l: 6716.43, c: 6873.93 },
+      { d: '11/7', o: 6873.93, h: 6937.28, l: 6789.54, c: 6832.05 },
+      { d: '11/14', o: 6832.05, h: 6895.29, l: 6631.73, c: 6666.04 },
+      { d: '11/21', o: 6666.04, h: 6830.71, l: 6648.27, c: 6706.65 },
+      { d: '11/28', o: 6706.65, h: 6764.75, l: 6624.99, c: 6740.49 },
+      { d: '12/5', o: 6740.49, h: 6744.34, l: 6636.21, c: 6689.8 },
+      { d: '12/12', o: 6689.8, h: 6809.58, l: 6649.96, c: 6787.92 },
+      { d: '12/19', o: 6787.92, h: 6897.65, l: 6704.98, c: 6860.64 },
+      { d: '12/26', o: 6860.64, h: 6915.21, l: 6742.83, c: 6769.22 },
+      { d: '1/2', o: 6769.22, h: 7014.71, l: 6767.47, c: 6832.67 },
+      { d: '1/9', o: 6832.67, h: 6866.58, l: 6806.71, c: 6823.5 },
+      { d: '1/16', o: 6823.5, h: 6835.62, l: 6558.81, c: 6682.63 },
+      { d: '1/23', o: 6682.63, h: 6819.95, l: 6607.81, c: 6738.73 },
+      { d: '1/30', o: 6738.73, h: 6766.51, l: 6715.63, c: 6744.94 },
+      { d: '2/6', o: 6744.94, h: 6787.2, l: 6608.26, c: 6680.33 },
+      { d: '2/13', o: 6680.33, h: 6865.1, l: 6578.45, c: 6743.42 },
+      { d: '2/20', o: 6743.42, h: 6807.45, l: 6737.85, c: 6803.58 },
+      { d: '2/27', o: 6803.58, h: 6822.37, l: 6713.93, c: 6755.52 },
+      { d: '3/6', o: 6755.52, h: 6873.57, l: 6646.19, c: 6806.9 },
+      { d: '3/13', o: 6806.9, h: 6939.66, l: 6786.75, c: 6921.43 },
+      { d: '3/20', o: 6921.43, h: 6976.42, l: 6815.13, c: 6858.52 },
+      { d: '3/27', o: 6858.52, h: 6919.22, l: 6784.49, c: 6908.68 },
+      { d: '4/3', o: 6908.68, h: 6927.57, l: 6872.15, c: 6920.02 },
+      { d: '4/10', o: 6920.02, h: 7196.15, l: 6887.64, c: 7166.3 },
+      { d: '4/17', o: 7166.3, h: 7290.46, l: 6968.85, c: 6977.58 },
+      { d: '4/24', o: 6977.58, h: 7075.63, l: 6957.36, c: 7061.51 },
+      { d: '5/1', o: 7061.51, h: 7101.84, l: 7019.43, c: 7040.37 },
+      { d: '5/8', o: 7040.37, h: 7137.77, l: 7038.22, c: 7041.06 },
+      { d: '5/15', o: 7041.06, h: 7282.62, l: 7007.74, c: 7253.16 },
+      { d: '5/22', o: 7253.16, h: 7267.89, l: 7179.77, c: 7263.83 },
+      { d: '5/29', o: 7263.83, h: 7527.16, l: 7260.28, c: 7519.62 },
+      { d: '6/5', o: 7519.62, h: 7630.59, l: 7425.31, c: 7481.78 },
+      { d: '6/12', o: 7481.78, h: 7595.41, l: 7439.11, c: 7533.09 },
+      { d: '6/19', o: 7533.09, h: 7573.46, l: 7421.41, c: 7489.68 },
+      { d: '6/26', o: 7489.68, h: 7508.37, l: 7399.2, c: 7424.07 },
+      { d: '7/3', o: 7424.07, h: 7488.54, l: 7305.32, c: 7442.9 },
+      { d: '7/10', o: 7442.9, h: 7476.69, l: 7310.27, c: 7423.27 },
+      { d: '7/17', o: 7423.27, h: 7490.67, l: 7399.07, c: 7457.69 },
+    ],
+  },
+  {
+    name: 'Nasdaq Composite',
+    symbol: 'IXIC',
+    yahooSymbol: '^IXIC',
+    level: 25520.24,
+    change: -361.66,
+    changePct: -1.40,
+    lastUpdated: '2026-07-17T17:15:59',
+    peTrailing: null,
+    peForward: null,
+    peRange: null,
+    peChartUrl: null,
+    peChartSource: null,
+    description: 'Nasdaq Composite 涵蓋那斯達克掛牌的所有股票（超過3000檔），成分股數量遠多於 Nasdaq-100，包含許多中小型與未獲利的公司。',
+    week52: { low: 20560.17, high: 27190.21 },
+    note: '涵蓋超過3000檔成分股（含大量未獲利小型股），沒有廣泛採用的單一本益比指標，一般改用 Nasdaq-100 的本益比作為科技權值參考',
+    history: [
+      { d: '7/25', o: 22022.96, h: 22234.67, l: 21870.42, c: 22060.92 },
+      { d: '8/1', o: 22060.92, h: 22281.4, l: 21783.81, c: 22273.1 },
+      { d: '8/8', o: 22273.1, h: 22868.36, l: 22268.78, c: 22458.83 },
+      { d: '8/15', o: 22458.83, h: 22736.97, l: 21652.19, c: 21718.47 },
+      { d: '8/22', o: 21718.47, h: 21731.56, l: 21073.76, c: 21327.72 },
+      { d: '8/29', o: 21327.72, h: 21687.48, l: 21278.76, c: 21644.11 },
+      { d: '9/5', o: 21644.11, h: 22241.13, l: 21511.05, c: 22159.68 },
+      { d: '9/12', o: 22159.68, h: 23053.39, l: 21842.94, c: 22914.3 },
+      { d: '9/19', o: 22914.3, h: 23685.88, l: 22762.16, c: 23655.66 },
+      { d: '9/26', o: 23655.66, h: 23726.23, l: 22694.65, c: 22869.25 },
+      { d: '10/3', o: 22869.25, h: 23334.41, l: 22781.1, c: 23207.29 },
+      { d: '10/10', o: 23207.29, h: 23342.43, l: 22355.93, c: 22490.72 },
+      { d: '10/17', o: 22490.72, h: 23405.08, l: 22391.67, c: 23145.9 },
+      { d: '10/24', o: 23145.9, h: 23495.94, l: 22999.09, c: 23284.94 },
+      { d: '10/31', o: 23284.94, h: 23358.8, l: 22653.93, c: 22872.8 },
+      { d: '11/7', o: 22872.8, h: 23849.08, l: 22872.41, c: 23693.2 },
+      { d: '11/14', o: 23693.2, h: 24221.55, l: 23586.74, c: 23992.86 },
+      { d: '11/21', o: 23992.86, h: 24113.86, l: 23090.36, c: 23262.29 },
+      { d: '11/28', o: 23262.29, h: 23539.32, l: 23216.42, c: 23417.89 },
+      { d: '12/5', o: 23417.89, h: 23815.25, l: 23099.77, c: 23166.63 },
+      { d: '12/12', o: 23166.63, h: 23282.2, l: 23058.3, c: 23249.85 },
+      { d: '12/19', o: 23249.85, h: 23442.72, l: 22992.48, c: 23105.51 },
+      { d: '12/26', o: 23105.51, h: 23799.16, l: 22981.66, c: 23684.29 },
+      { d: '1/2', o: 23684.29, h: 23816.0, l: 22870.69, c: 23151.49 },
+      { d: '1/9', o: 23151.49, h: 23377.81, l: 23034.61, c: 23315.77 },
+      { d: '1/16', o: 23315.77, h: 24087.95, l: 23276.39, c: 24074.49 },
+      { d: '1/23', o: 24074.49, h: 24081.58, l: 23561.1, c: 23776.97 },
+      { d: '1/30', o: 23776.97, h: 23946.15, l: 23717.05, c: 23902.54 },
+      { d: '2/6', o: 23902.54, h: 24257.98, l: 23764.5, c: 24025.25 },
+      { d: '2/13', o: 24025.25, h: 24126.76, l: 23508.35, c: 23784.4 },
+      { d: '2/20', o: 23784.4, h: 24230.83, l: 23779.37, c: 24086.8 },
+      { d: '2/27', o: 24086.8, h: 24178.84, l: 24069.92, c: 24167.49 },
+      { d: '3/6', o: 24167.49, h: 24169.5, l: 23494.09, c: 23820.83 },
+      { d: '3/13', o: 23820.83, h: 24737.05, l: 23696.35, c: 24574.86 },
+      { d: '3/20', o: 24574.86, h: 25172.97, l: 24132.6, c: 24947.35 },
+      { d: '3/27', o: 24947.35, h: 25011.01, l: 24911.69, c: 24918.89 },
+      { d: '4/3', o: 24918.89, h: 24920.84, l: 24307.9, c: 24691.54 },
+      { d: '4/10', o: 24691.54, h: 25033.52, l: 24309.44, c: 24404.28 },
+      { d: '4/17', o: 24404.28, h: 25250.1, l: 23900.27, c: 24956.45 },
+      { d: '4/24', o: 24956.45, h: 25359.91, l: 24661.08, c: 24936.73 },
+      { d: '5/1', o: 24936.73, h: 25389.18, l: 24763.5, c: 25173.89 },
+      { d: '5/8', o: 25173.89, h: 25219.7, l: 24903.76, c: 25137.75 },
+      { d: '5/15', o: 25137.75, h: 25568.26, l: 24916.14, c: 25443.9 },
+      { d: '5/22', o: 25443.9, h: 25712.11, l: 25234.89, c: 25436.99 },
+      { d: '5/29', o: 25436.99, h: 25968.47, l: 25412.01, c: 25810.54 },
+      { d: '6/5', o: 25810.54, h: 25815.64, l: 25480.27, c: 25774.03 },
+      { d: '6/12', o: 25774.03, h: 26206.56, l: 25524.98, c: 26181.34 },
+      { d: '6/19', o: 26181.34, h: 26644.02, l: 26061.37, c: 26525.11 },
+      { d: '6/26', o: 26525.11, h: 26678.97, l: 26436.2, c: 26517.62 },
+      { d: '7/3', o: 26517.62, h: 26542.95, l: 25993.02, c: 26175.12 },
+      { d: '7/10', o: 26175.12, h: 26285.78, l: 25773.16, c: 25801.28 },
+      { d: '7/17', o: 25801.28, h: 25838.59, l: 25208.24, c: 25520.24 },
+    ],
+  },
+];
+
+// ---- Seed data (placeholder — user will ask Claude to refresh with live search) ----
+// ---- Live data auto-refresh via Yahoo Finance (through a Cloudflare Worker
+// CORS proxy — Yahoo's endpoints don't allow direct browser calls). ----
+// Deploy the included cloudflare-worker.js at workers.cloudflare.com (free,
+// no credit card), then paste the resulting https://xxx.workers.dev URL below.
+// This single endpoint covers both index-level quotes (real point values,
+// not an ETF proxy) and individual stock quotes, including trailingPE,
+// forwardPE, epsTrailingTwelveMonths, and epsForward where Yahoo populates
+// them. Some fields may come back null for index tickers — the app falls
+// back to the last manually-set value in that case rather than blanking it.
+const WORKER_URL = 'https://yahoo-proxy.yalene-chen.workers.dev';
+
+async function fetchYahooQuotes(symbols) {
+  if (!WORKER_URL || WORKER_URL === 'YOUR_CLOUDFLARE_WORKER_URL_HERE') return null;
+  if (!symbols.length) return null;
+  try {
+    const url = `${WORKER_URL}?symbols=${encodeURIComponent(symbols.join(','))}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = data?.quoteResponse?.result;
+    if (!Array.isArray(results)) return null;
+    // Map by symbol for easy lookup by the caller.
+    const bySymbol = {};
+    for (const r of results) bySymbol[r.symbol] = r;
+    return bySymbol;
+  } catch (err) {
+    console.error('Yahoo quote fetch failed', err);
+    return null;
+  }
+}
+
+function extractLiveFields(q) {
+  if (!q) return null;
+  const marketCapRaw = q.marketCap;
+  let marketCap = null;
+  if (typeof marketCapRaw === 'number') {
+    if (marketCapRaw >= 1e12) marketCap = (marketCapRaw / 1e12).toFixed(2) + 'T';
+    else if (marketCapRaw >= 1e9) marketCap = (marketCapRaw / 1e9).toFixed(2) + 'B';
+    else if (marketCapRaw >= 1e6) marketCap = (marketCapRaw / 1e6).toFixed(2) + 'M';
+  }
+  return {
+    price: q.regularMarketPrice ?? null,
+    change: q.regularMarketChange ?? null,
+    changePct: q.regularMarketChangePercent ?? null,
+    peTrailing: q.trailingPE ?? null,
+    peForward: q.forwardPE ?? null,
+    eps: q.epsTrailingTwelveMonths ?? null,
+    epsForward: q.epsForward ?? null,
+    marketCap,
+  };
+}
+
+const seedTickers = {
+
+  AAPL: {
+    name: 'Apple Inc.',
+    price: 333.74,
+    change: 0.48,
+    changePct: 0.14,
+    lastUpdated: '2026-07-20T09:00:00',
+    fundamentals: { pe: 40.37, peForward: 31.35, marketCap: '4.90T', eps: 8.27, epsForward: 8.51 },
+    technicals: { ma50: 312.40, ma200: 268.75, rsi: 64 },
+    news: [
+      { headline: 'Apple 與美國司法部就反壟斷訴訟展開初步和解談判', source: 'Bloomberg' },
+      { headline: 'Apple 市值一度超越 Nvidia，重奪全球市值最高公司寶座', source: 'Reuters' },
+      { headline: 'HSBC 將 Apple 評等上調至買進，看好其AI布局轉折點', source: 'CNBC' },
+    ],
+    history: [
+      { d: '7/25', o: 328.33, h: 330.77, l: 328.09, c: 328.09 },
+      { d: '8/1', o: 328.09, h: 330.77, l: 322.33, c: 326.01 },
+      { d: '8/8', o: 326.01, h: 328.53, l: 315.48, c: 318.97 },
+      { d: '8/15', o: 318.97, h: 325.87, l: 318.44, c: 324.22 },
+      { d: '8/22', o: 324.22, h: 325.71, l: 320.3, c: 320.49 },
+      { d: '8/29', o: 320.49, h: 326.07, l: 317.78, c: 323.36 },
+      { d: '9/5', o: 323.36, h: 325.03, l: 309.6, c: 310.29 },
+      { d: '9/12', o: 310.29, h: 319.19, l: 306.26, c: 317.85 },
+      { d: '9/19', o: 317.85, h: 319.57, l: 306.04, c: 308.97 },
+      { d: '9/26', o: 308.97, h: 309.0, l: 302.93, c: 304.12 },
+      { d: '10/3', o: 304.12, h: 314.35, l: 298.41, c: 311.63 },
+      { d: '10/10', o: 311.63, h: 312.07, l: 302.56, c: 302.93 },
+      { d: '10/17', o: 302.93, h: 304.3, l: 299.44, c: 302.81 },
+      { d: '10/24', o: 302.81, h: 306.08, l: 302.18, c: 303.73 },
+      { d: '10/31', o: 303.73, h: 303.95, l: 296.57, c: 297.49 },
+      { d: '11/7', o: 297.49, h: 307.94, l: 294.37, c: 306.69 },
+      { d: '11/14', o: 306.69, h: 320.73, l: 304.17, c: 317.23 },
+      { d: '11/21', o: 317.23, h: 319.26, l: 301.25, c: 303.92 },
+      { d: '11/28', o: 303.92, h: 308.98, l: 289.99, c: 294.65 },
+      { d: '12/5', o: 294.65, h: 300.76, l: 292.51, c: 300.3 },
+      { d: '12/12', o: 300.3, h: 302.39, l: 291.14, c: 292.11 },
+      { d: '12/19', o: 292.11, h: 294.24, l: 289.95, c: 290.03 },
+      { d: '12/26', o: 290.03, h: 293.8, l: 286.53, c: 291.26 },
+      { d: '1/2', o: 291.26, h: 300.85, l: 287.61, c: 296.11 },
+      { d: '1/9', o: 296.11, h: 299.03, l: 291.72, c: 295.07 },
+      { d: '1/16', o: 295.07, h: 296.77, l: 292.63, c: 296.09 },
+      { d: '1/23', o: 296.09, h: 296.71, l: 285.43, c: 291.45 },
+      { d: '1/30', o: 291.45, h: 300.69, l: 287.25, c: 300.14 },
+      { d: '2/6', o: 300.14, h: 302.82, l: 296.64, c: 297.29 },
+      { d: '2/13', o: 297.29, h: 303.5, l: 295.77, c: 299.93 },
+      { d: '2/20', o: 299.93, h: 300.47, l: 292.37, c: 296.97 },
+      { d: '2/27', o: 296.97, h: 298.57, l: 296.09, c: 298.08 },
+      { d: '3/6', o: 298.08, h: 299.39, l: 296.19, c: 297.4 },
+      { d: '3/13', o: 297.4, h: 300.59, l: 296.03, c: 296.75 },
+      { d: '3/20', o: 296.75, h: 297.17, l: 290.16, c: 290.55 },
+      { d: '3/27', o: 290.55, h: 296.94, l: 289.36, c: 296.05 },
+      { d: '4/3', o: 296.05, h: 306.7, l: 291.94, c: 305.67 },
+      { d: '4/10', o: 305.67, h: 310.47, l: 301.43, c: 307.73 },
+      { d: '4/17', o: 307.73, h: 313.73, l: 305.85, c: 313.12 },
+      { d: '4/24', o: 313.12, h: 325.54, l: 312.73, c: 319.33 },
+      { d: '5/1', o: 319.33, h: 329.88, l: 317.24, c: 326.3 },
+      { d: '5/8', o: 326.3, h: 333.37, l: 325.98, c: 328.94 },
+      { d: '5/15', o: 328.94, h: 332.33, l: 325.41, c: 330.93 },
+      { d: '5/22', o: 330.93, h: 342.48, l: 330.65, c: 337.69 },
+      { d: '5/29', o: 337.69, h: 340.27, l: 336.62, c: 338.67 },
+      { d: '6/5', o: 338.67, h: 339.49, l: 329.77, c: 331.89 },
+      { d: '6/12', o: 331.89, h: 335.15, l: 330.41, c: 332.53 },
+      { d: '6/19', o: 332.53, h: 335.27, l: 318.66, c: 319.18 },
+      { d: '6/26', o: 319.18, h: 319.64, l: 316.88, c: 319.58 },
+      { d: '7/3', o: 319.58, h: 323.53, l: 317.63, c: 322.94 },
+      { d: '7/10', o: 322.94, h: 332.18, l: 321.63, c: 332.17 },
+      { d: '7/17', o: 332.17, h: 334.22, l: 330.91, c: 333.74 },
+    ],
+  },
+  NVDA: {
+    name: 'NVIDIA Corp.',
+    price: 202.81,
+    change: -4.59,
+    changePct: -2.21,
+    lastUpdated: '2026-07-20T09:00:00',
+    fundamentals: { pe: 31.06, peForward: 22.72, marketCap: '4.91T', eps: 6.53, epsForward: 8.29 },
+    technicals: { ma50: 196.80, ma200: 178.30, rsi: 47 },
+    news: [
+      { headline: '半導體類股延續賣壓，費城半導體指數進入熊市', source: 'CNBC' },
+      { headline: 'Nvidia 一週內收復本月初逾兆美元的晶片股跌幅', source: 'Bloomberg' },
+      { headline: '美國政府重新開放H20晶片對中國出口許可', source: 'Reuters' },
+    ],
+    history: [
+      { d: '7/25', o: 215.88, h: 216.13, l: 199.88, c: 203.82 },
+      { d: '8/1', o: 203.82, h: 204.12, l: 200.46, c: 201.53 },
+      { d: '8/8', o: 201.53, h: 204.4, l: 200.74, c: 203.88 },
+      { d: '8/15', o: 203.88, h: 209.18, l: 203.32, c: 208.88 },
+      { d: '8/22', o: 208.88, h: 210.7, l: 197.58, c: 197.6 },
+      { d: '8/29', o: 197.6, h: 200.21, l: 196.88, c: 199.11 },
+      { d: '9/5', o: 199.11, h: 208.21, l: 196.62, c: 207.91 },
+      { d: '9/12', o: 207.91, h: 208.44, l: 205.28, c: 207.02 },
+      { d: '9/19', o: 207.02, h: 208.47, l: 203.28, c: 206.75 },
+      { d: '9/26', o: 206.75, h: 210.99, l: 204.5, c: 210.43 },
+      { d: '10/3', o: 210.43, h: 214.76, l: 207.1, c: 212.66 },
+      { d: '10/10', o: 212.66, h: 220.06, l: 211.7, c: 218.11 },
+      { d: '10/17', o: 218.11, h: 221.4, l: 215.06, c: 219.1 },
+      { d: '10/24', o: 219.1, h: 221.03, l: 218.51, c: 220.7 },
+      { d: '10/31', o: 220.7, h: 221.48, l: 213.83, c: 215.11 },
+      { d: '11/7', o: 215.11, h: 215.12, l: 212.03, c: 214.25 },
+      { d: '11/14', o: 214.25, h: 224.3, l: 213.4, c: 224.08 },
+      { d: '11/21', o: 224.08, h: 225.13, l: 220.37, c: 222.92 },
+      { d: '11/28', o: 222.92, h: 224.89, l: 221.32, c: 222.05 },
+      { d: '12/5', o: 222.05, h: 222.78, l: 218.65, c: 218.68 },
+      { d: '12/12', o: 218.68, h: 227.0, l: 218.22, c: 225.14 },
+      { d: '12/19', o: 225.14, h: 225.74, l: 217.67, c: 218.86 },
+      { d: '12/26', o: 218.86, h: 230.16, l: 216.42, c: 226.27 },
+      { d: '1/2', o: 226.27, h: 227.49, l: 217.33, c: 219.3 },
+      { d: '1/9', o: 219.3, h: 225.89, l: 209.6, c: 211.62 },
+      { d: '1/16', o: 211.62, h: 214.2, l: 210.44, c: 213.57 },
+      { d: '1/23', o: 213.57, h: 217.77, l: 212.85, c: 214.98 },
+      { d: '1/30', o: 214.98, h: 220.12, l: 214.51, c: 217.64 },
+      { d: '2/6', o: 217.64, h: 227.15, l: 217.09, c: 226.17 },
+      { d: '2/13', o: 226.17, h: 228.37, l: 222.05, c: 223.36 },
+      { d: '2/20', o: 223.36, h: 228.06, l: 223.32, c: 227.26 },
+      { d: '2/27', o: 227.26, h: 228.22, l: 219.18, c: 220.49 },
+      { d: '3/6', o: 220.49, h: 232.4, l: 217.42, c: 230.64 },
+      { d: '3/13', o: 230.64, h: 237.61, l: 228.16, c: 236.21 },
+      { d: '3/20', o: 236.21, h: 242.23, l: 231.78, c: 241.12 },
+      { d: '3/27', o: 241.12, h: 244.14, l: 238.87, c: 243.18 },
+      { d: '4/3', o: 243.18, h: 244.81, l: 236.52, c: 236.98 },
+      { d: '4/10', o: 236.98, h: 239.21, l: 230.28, c: 234.74 },
+      { d: '4/17', o: 234.74, h: 241.23, l: 233.46, c: 239.33 },
+      { d: '4/24', o: 239.33, h: 242.46, l: 239.13, c: 239.65 },
+      { d: '5/1', o: 239.65, h: 243.09, l: 239.13, c: 241.17 },
+      { d: '5/8', o: 241.17, h: 241.86, l: 228.57, c: 230.17 },
+      { d: '5/15', o: 230.17, h: 232.19, l: 227.6, c: 232.1 },
+      { d: '5/22', o: 232.1, h: 232.17, l: 225.71, c: 226.94 },
+      { d: '5/29', o: 226.94, h: 230.9, l: 217.57, c: 218.79 },
+      { d: '6/5', o: 218.79, h: 221.29, l: 217.01, c: 218.04 },
+      { d: '6/12', o: 218.04, h: 221.43, l: 201.27, c: 204.31 },
+      { d: '6/19', o: 204.31, h: 210.67, l: 203.55, c: 209.71 },
+      { d: '6/26', o: 209.71, h: 217.58, l: 207.93, c: 216.39 },
+      { d: '7/3', o: 216.39, h: 217.13, l: 216.13, c: 216.41 },
+      { d: '7/10', o: 216.41, h: 220.23, l: 209.14, c: 209.32 },
+      { d: '7/17', o: 209.32, h: 210.13, l: 202.62, c: 202.81 },
+    ],
+  },
+};
+
+function timeAgoTone(iso) {
+  const hrs = (Date.now() - new Date(iso).getTime()) / 36e5;
+  if (hrs < 6) return { label: 'fresh', color: '#0F9D58' };
+  if (hrs < 24) return { label: 'aging', color: '#D89430' };
+  return { label: 'stale', color: '#E0483F' };
+}
+
+function fmtTimeAgo(iso) {
+  const hrs = Math.floor((Date.now() - new Date(iso).getTime()) / 36e5);
+  if (hrs < 1) return 'just now';
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+// Custom candlestick renderer. recharts gives each Bar shape its own
+// pixel y/height for the bar's dataKey ("range"), where range = [low, high].
+// We map open/close/high/low into that same pixel space using the ratio
+// between the bar's pixel span and its data span.
+function makeCandleShape(color) {
+  return function CandleShape(props) {
+    const { x, y, width, height, payload } = props;
+    const { o, h, l, c } = payload;
+    const isUp = c >= o;
+    const fill = isUp ? '#0F9D58' : '#E0483F';
+    if (h === l) return null;
+    const scaleY = (v) => y + (h - v) / (h - l) * height;
+    const yOpen = scaleY(o);
+    const yClose = scaleY(c);
+    const yHigh = y;
+    const yLow = y + height;
+    const bodyTop = Math.min(yOpen, yClose);
+    const bodyHeight = Math.max(Math.abs(yClose - yOpen), 1.5);
+    const cx = x + width / 2;
+    const bodyWidth = Math.max(width * 0.55, 4);
+
+    return (
+      <g>
+        <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke={fill} strokeWidth={1.5} />
+        <rect x={cx - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={fill} rx={1} />
+      </g>
+    );
+  };
+}
+
+function CandleTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  const isUp = d.c >= d.o;
+  return (
+    <div style={{
+      background: '#F2ECDC', border: '1px solid #D6CBAE', borderRadius: 6,
+      padding: '8px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5,
+    }}>
+      <div style={{ color: '#8A7A5C', marginBottom: 3 }}>{d.d}</div>
+      <div style={{ color: '#3A2E20' }}>開 {d.o.toLocaleString()}　收 {d.c.toLocaleString()}</div>
+      <div style={{ color: isUp ? '#0F9D58' : '#E0483F' }}>高 {d.h.toLocaleString()}　低 {d.l.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function CandlestickChart({ data, height = 140 }) {
+  const chartData = data.map(d => ({ ...d, range: [d.l, d.h] }));
+  const allLows = data.map(d => d.l);
+  const allHighs = data.map(d => d.h);
+  const minVal = Math.min(...allLows);
+  const maxVal = Math.max(...allHighs);
+  const pad = (maxVal - minVal) * 0.05 || maxVal * 0.01 || 1;
+  const yDomain = [minVal - pad, maxVal + pad];
+
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer>
+        <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+          <XAxis dataKey="d" tick={{ fill: '#A89878', fontSize: 11 }} interval={7} />
+          <YAxis domain={yDomain} tick={{ fill: '#A89878', fontSize: 12 }} />
+          <Tooltip content={<CandleTooltip />} />
+          <Bar dataKey="range" shape={makeCandleShape()} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TickerCard({ symbol, data, onRemove }) {
+  const [expanded, setExpanded] = useState(false);
+  const isUp = data.change >= 0;
+  const tone = timeAgoTone(data.lastUpdated);
+  const sparkData = data.history.map(d => ({ ...d, range: [d.l, d.h] }));
+
+  return (
+    <div style={{
+      background: '#FFFDF7',
+      border: '1px solid #E8ECF0',
+      borderRadius: 12,
+      overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(28, 39, 51, 0.06), 0 1px 2px rgba(28, 39, 51, 0.04)',
+    }}>
+      {/* Header row */}
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px', cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 19, fontWeight: 700, color: '#3A2E20', letterSpacing: 0.5 }}>
+              {symbol}
+            </div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#8A7A5C' }}>
+              {data.name}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 19, color: '#3A2E20' }}>
+              ${data.price.toFixed(2)}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end',
+              fontFamily: 'JetBrains Mono, monospace', fontSize: 14.5,
+              color: isUp ? '#0F9D58' : '#E0483F',
+            }}>
+              {isUp ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+              {isUp ? '+' : ''}{data.change.toFixed(2)} ({isUp ? '+' : ''}{data.changePct.toFixed(2)}%)
+            </div>
+          </div>
+
+          <div style={{ width: 70, height: 32 }}>
+            <ResponsiveContainer>
+              <ComposedChart data={sparkData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                <Bar dataKey="range" shape={makeCandleShape()} isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(symbol); }}
+            style={{ background: 'none', border: 'none', color: '#A89878', cursor: 'pointer', padding: 4 }}
+            aria-label={`Remove ${symbol}`}
+          >
+            <X size={15} />
+          </button>
+
+          {expanded ? <ChevronUp size={16} color="#A89878" /> : <ChevronDown size={16} color="#A89878" />}
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div style={{ borderTop: '1px solid #E8ECF0', padding: '16px', display: 'grid', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <LineChartIcon size={13} color="#8A7A5C" />
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>一年走勢（週K線）</span>
+            </div>
+            <CandlestickChart data={data.history} height={200} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <BarChart3 size={13} color="#8A7A5C" />
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>基本面</span>
+              </div>
+              <Stat label="本益比 (Trailing P/E)" value={data.fundamentals.pe} />
+              <Stat label="Forward P/E" value={data.fundamentals.peForward} />
+              <Stat label="市值" value={data.fundamentals.marketCap} />
+              <Stat label="EPS" value={data.fundamentals.eps} />
+              <Stat label="預估EPS" value={data.fundamentals.epsForward} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <Activity size={13} color="#8A7A5C" />
+                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>技術指標</span>
+              </div>
+              <Stat label="MA50" value={`$${data.technicals.ma50}`} />
+              <Stat label="MA200" value={`$${data.technicals.ma200}`} />
+              <Stat label="RSI" value={data.technicals.rsi} flag={data.technicals.rsi > 70 ? 'overbought' : data.technicals.rsi < 30 ? 'oversold' : null} />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Newspaper size={13} color="#8A7A5C" />
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>新聞摘要</span>
+            </div>
+            {data.news.map((n, idx) => (
+              <div key={idx} style={{ fontFamily: 'Inter, sans-serif', fontSize: 17, color: '#5C4A34', padding: '8px 0', borderBottom: idx < data.news.length - 1 ? '1px solid #F2ECDC' : 'none' }}>
+                {n.headline}
+                <span style={{ color: '#A89878', fontSize: 13.5, marginLeft: 8 }}>— {n.source}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: tone.color }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.color, display: 'inline-block' }} />
+            資料更新於 {fmtTimeAgo(data.lastUpdated)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PERuler({ range }) {
+  const { low, high, median, current } = range;
+  const pct = (v) => Math.min(100, Math.max(0, ((v - low) / (high - low)) * 100));
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ position: 'relative', height: 8, background: '#F2ECDC', borderRadius: 4, marginTop: 26, marginBottom: 10 }}>
+        {/* median tick */}
+        <div style={{
+          position: 'absolute', left: `${pct(median)}%`, top: -5, width: 2, height: 18,
+          background: '#8A7A5C', transform: 'translateX(-50%)',
+        }} />
+        {/* current marker */}
+        <div style={{
+          position: 'absolute', left: `${pct(current)}%`, top: -16, transform: 'translateX(-50%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+        }}>
+          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 700, color: '#5C6B47', whiteSpace: 'nowrap', marginBottom: 3 }}>
+            {current}
+          </div>
+          <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#5C6B47', border: '2px solid #FFFFFF', boxShadow: '0 0 0 1.5px #5C6B47' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: '#8A7A5C' }}>
+        <span>低 {low}</span>
+        <span>中位數 {median}</span>
+        <span>高 {high}</span>
+      </div>
+    </div>
+  );
+}
+
+function FedRateBanner({ data }) {
+  return (
+    <div style={{
+      background: '#FFFDF7', border: '1px solid #E8ECF0', borderRadius: 12,
+      padding: '14px 16px', marginBottom: 12,
+      boxShadow: '0 1px 3px rgba(28, 39, 51, 0.06), 0 1px 2px rgba(28, 39, 51, 0.04)',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    }}>
+      <div>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>
+          聯邦基金利率目標區間
+        </div>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, fontWeight: 700, color: '#3A2E20', marginTop: 2 }}>
+          {data.low.toFixed(2)}% – {data.high.toFixed(2)}%
+        </div>
+        <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, color: '#A89878', marginTop: 2 }}>
+          有效利率 {data.effective.toFixed(2)}% · {data.note}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, color: timeAgoTone(data.lastUpdated).color }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: timeAgoTone(data.lastUpdated).color, display: 'inline-block' }} />
+        {fmtTimeAgo(data.lastUpdated)}
+      </div>
+    </div>
+  );
+}
+
+function IndexPanel({ data }) {
+  const [expanded, setExpanded] = useState(false);
+  const isUp = data.change >= 0;
+  return (
+    <div style={{
+      background: '#FFFDF7', border: '1px solid #E8ECF0', borderRadius: 12,
+      marginBottom: 12,
+      boxShadow: '0 1px 3px rgba(28, 39, 51, 0.06), 0 1px 2px rgba(28, 39, 51, 0.04)',
+      overflow: 'hidden',
+    }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ padding: '16px', cursor: 'pointer' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>
+                大盤 · {data.symbol}
+              </div>
+              {expanded ? <ChevronUp size={14} color="#A89878" /> : <ChevronDown size={14} color="#A89878" />}
+            </div>
+            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 25, fontWeight: 700, color: '#3A2E20', marginTop: 2 }}>
+              {data.name}
+            </div>
+            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 23, color: '#3A2E20', marginTop: 2 }}>
+              {data.level.toLocaleString()}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontFamily: 'JetBrains Mono, monospace', fontSize: 15,
+              color: isUp ? '#0F9D58' : '#E0483F', marginTop: 2,
+            }}>
+              {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+              {isUp ? '+' : ''}{data.change.toFixed(2)} ({isUp ? '+' : ''}{data.changePct.toFixed(2)}%)
+            </div>
+          </div>
+          {data.week52 && (
+            <div style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#A89878' }}>
+              <div>52週高 {data.week52.high.toLocaleString()}</div>
+              <div>52週低 {data.week52.low.toLocaleString()}</div>
+            </div>
+          )}
+        </div>
+
+        {data.peTrailing !== null ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, paddingTop: 16, borderTop: '1px solid #E8ECF0' }}>
+              <PEHighlight label="Trailing P/E" value={data.peTrailing} />
+              <PEHighlight label="Forward P/E" value={data.peForward} />
+            </div>
+
+            {data.epsForward != null && (
+              <div style={{ marginTop: 10 }}>
+                <Stat label="預估今年EPS" value={data.epsForward} />
+                {data.epsForwardNote && (
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 2 }}>
+                    {data.epsForwardNote}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C', marginBottom: 4 }}>
+                歷史本益比區間定位
+              </div>
+              <PERuler range={data.peRange} />
+              {data.peRangeNote && (
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: '#A89878', lineHeight: 1.5, marginTop: 6 }}>
+                  {data.peRangeNote}
+                </div>
+              )}
+            </div>
+
+            <a
+              href={data.peChartUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginTop: 12, padding: '10px 12px', background: '#F2ECDC', borderRadius: 8,
+                border: '1px solid #E8ECF0', textDecoration: 'none',
+              }}
+            >
+              <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#5C4A34' }}>
+                查看完整逐日歷史 P/E 折線圖 ({data.peChartSource})
+              </span>
+              <span style={{ color: '#A89878', fontSize: 16 }}>↗</span>
+            </a>
+
+            {data.note && (
+              <div style={{ marginTop: 10, fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#A89878', lineHeight: 1.5 }}>
+                註：{data.note}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{
+            marginTop: 16, paddingTop: 16, borderTop: '1px solid #E8ECF0',
+          }}>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C', marginBottom: 6 }}>
+              本益比資訊
+            </div>
+            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#8A7A5C', lineHeight: 1.6 }}>
+              {data.note}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div style={{ padding: '0 16px 16px' }}>
+          {data.description && (
+            <div style={{
+              fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#5C4A34', lineHeight: 1.6,
+              marginBottom: 16, paddingBottom: 16, borderTop: '1px solid #E8ECF0', paddingTop: 16,
+            }}>
+              {data.description}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <LineChartIcon size={13} color="#8A7A5C" />
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C' }}>一年走勢（週K線）</span>
+          </div>
+          <CandlestickChart data={data.history} height={200} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: timeAgoTone(data.lastUpdated).color, marginTop: 12 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: timeAgoTone(data.lastUpdated).color, display: 'inline-block' }} />
+            資料更新於 {fmtTimeAgo(data.lastUpdated)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PEHighlight({ label, value }) {
+  return (
+    <div style={{
+      background: '#F2ECDC', borderRadius: 8, padding: '10px 12px',
+      border: '1px solid #E2D9C3',
+    }}>
+      <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, color: '#8A7A5C', marginBottom: 2 }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 26, fontWeight: 700, color: '#5C6B47' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, flag }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#8A7A5C' }}>{label}</span>
+      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14.5, color: flag ? '#D89430' : '#3A2E20' }}>
+        {value}{flag ? ` · ${flag === 'overbought' ? '超買' : '超賣'}` : ''}
+      </span>
+    </div>
+  );
+}
+
+function StockDashboard() {
+  const [tickers, setTickers] = useState(seedTickers);
+  const [indexData, setIndexData] = useState(initialIndexList);
+  const [inputVal, setInputVal] = useState('');
+  const [workerMissing, setWorkerMissing] = useState(false);
+
+  const applyLiveUpdate = (bySymbol) => {
+    // Update indices
+    setIndexData(prev => prev.map(idx => {
+      const live = extractLiveFields(bySymbol[idx.yahooSymbol]);
+      if (!live) return idx;
+      return {
+        ...idx,
+        level: live.price ?? idx.level,
+        change: live.change ?? idx.change,
+        changePct: live.changePct ?? idx.changePct,
+        peTrailing: live.peTrailing ?? idx.peTrailing,
+        peForward: live.peForward ?? idx.peForward,
+        epsForward: live.epsForward ?? idx.epsForward,
+        // Once we have a real live forward-EPS figure, the old manual
+        // estimation-methodology note no longer applies.
+        epsForwardNote: live.epsForward != null ? null : idx.epsForwardNote,
+        lastUpdated: new Date().toISOString(),
+      };
+    }));
+
+    // Update individual stocks
+    setTickers(prev => {
+      const next = { ...prev };
+      for (const sym of Object.keys(next)) {
+        const live = extractLiveFields(bySymbol[sym]);
+        if (!live) continue;
+        next[sym] = {
+          ...next[sym],
+          price: live.price ?? next[sym].price,
+          change: live.change ?? next[sym].change,
+          changePct: live.changePct ?? next[sym].changePct,
+          lastUpdated: new Date().toISOString(),
+          fundamentals: {
+            ...next[sym].fundamentals,
+            pe: live.peTrailing ?? next[sym].fundamentals.pe,
+            peForward: live.peForward ?? next[sym].fundamentals.peForward,
+            eps: live.eps ?? next[sym].fundamentals.eps,
+            epsForward: live.epsForward ?? next[sym].fundamentals.epsForward,
+            marketCap: live.marketCap ?? next[sym].fundamentals.marketCap,
+          },
+        };
+      }
+      return next;
+    });
+  };
+
+  // Auto-refresh live data for all indices + tracked stocks, once on load.
+  useEffect(() => {
+    if (!WORKER_URL || WORKER_URL === 'YOUR_CLOUDFLARE_WORKER_URL_HERE') {
+      setWorkerMissing(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const symbols = [
+        ...initialIndexList.map(idx => idx.yahooSymbol),
+        ...Object.keys(tickers),
+      ];
+      const bySymbol = await fetchYahooQuotes(symbols);
+      if (cancelled || !bySymbol) return;
+      applyLiveUpdate(bySymbol);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const addTicker = () => {
+    const sym = inputVal.trim().toUpperCase();
+    if (!sym || tickers[sym]) { setInputVal(''); return; }
+    setTickers(prev => ({
+      ...prev,
+      [sym]: {
+        name: '（尚未更新 — 請貼上最新資料）',
+        price: 0, change: 0, changePct: 0,
+        lastUpdated: new Date(Date.now() - 999 * 36e5).toISOString(),
+        fundamentals: { pe: '—', peForward: '—', marketCap: '—', eps: '—', epsForward: '—' },
+        technicals: { ma50: '—', ma200: '—', rsi: '—' },
+        news: [{ headline: '尚無資料，請向 Claude 要求搜尋最新資訊', source: '' }],
+        history: [{ d: '—', o: 0, h: 0, l: 0, c: 0 }],
+      }
+    }));
+    setInputVal('');
+    if (WORKER_URL && WORKER_URL !== 'YOUR_CLOUDFLARE_WORKER_URL_HERE') {
+      fetchYahooQuotes([sym]).then(bySymbol => {
+        if (!bySymbol) return;
+        applyLiveUpdate(bySymbol);
+      });
+    }
+  };
+
+  const removeTicker = (sym) => {
+    setTickers(prev => {
+      const next = { ...prev };
+      delete next[sym];
+      return next;
+    });
+  };
+
+  const overallStale = useMemo(() => {
+    const all = Object.values(tickers);
+    if (!all.length) return null;
+    const oldest = Math.max(...all.map(t => Date.now() - new Date(t.lastUpdated).getTime()));
+    return oldest / 36e5;
+  }, [tickers]);
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: '#FAF6EC',
+      padding: '24px 16px 60px',
+      fontFamily: 'Inter, sans-serif',
+    }}>
+      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <h1 style={{
+              fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, fontSize: 25,
+              color: '#3A2E20', margin: 0, letterSpacing: -0.5,
+            }}>
+              持股追蹤台
+            </h1>
+            {overallStale !== null && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 13,
+                color: overallStale > 24 ? '#E0483F' : overallStale > 6 ? '#D89430' : '#0F9D58',
+              }}>
+                <RefreshCw size={11} />
+                最舊資料 {Math.floor(overallStale)}h 前
+              </div>
+            )}
+          </div>
+          <p style={{ fontFamily: 'Inter, sans-serif', fontSize: 14.5, color: '#A89878', marginTop: 4 }}>
+            {workerMissing
+              ? '尚未連接即時資料 · 請在程式碼中設定 WORKER_URL'
+              : '大盤指數與個股股價每次開啟自動更新（含P/E、EPS，來源Yahoo Finance） · 其餘進階數據請 Claude 手動更新'}
+          </p>
+        </div>
+
+        {/* Fed rate */}
+        <FedRateBanner data={fedRate} />
+
+        {/* Index overview */}
+        <div style={{ display: 'grid', gap: 0, marginBottom: 20 }}>
+          {indexData.map((idx) => (
+            <IndexPanel key={idx.symbol} data={idx} />
+          ))}
+        </div>
+
+        {/* Add ticker */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <input
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addTicker()}
+            placeholder="輸入代號，例如 TSLA"
+            style={{
+              flex: 1, background: '#FFFDF7', border: '1px solid #E8ECF0', borderRadius: 8,
+              padding: '10px 12px', color: '#3A2E20', fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 15, outline: 'none',
+            }}
+          />
+          <button
+            onClick={addTicker}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#5C6B47', border: '1px solid #5C6B47', borderRadius: 8,
+              padding: '10px 14px', color: '#FFFDF7', cursor: 'pointer',
+              fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 500,
+            }}
+          >
+            <Plus size={14} /> 新增
+          </button>
+        </div>
+
+        {/* Cards */}
+        <div style={{ display: 'grid', gap: 10 }}>
+          {Object.keys(tickers).length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#A89878', fontFamily: 'Inter, sans-serif', fontSize: 15 }}>
+              尚未追蹤任何股票，輸入代號開始追蹤
+            </div>
+          )}
+          {Object.entries(tickers).map(([symbol, data]) => (
+            <TickerCard key={symbol} symbol={symbol} data={data} onRemove={removeTicker} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(h(StockDashboard));
+</script>
+</body>
+</html>

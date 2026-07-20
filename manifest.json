@@ -1,0 +1,15 @@
+{
+  "name": "持股追蹤台",
+  "short_name": "持股追蹤台",
+  "description": "美股與大盤指數追蹤儀表板",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FAF6EC",
+  "theme_color": "#FAF6EC",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
