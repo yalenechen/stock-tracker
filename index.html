@@ -116,6 +116,7 @@ const initialIndexList = [
     epsTrailingNote: '以2026/7/17指數點位除以當時Trailing P/E反推估算',
     epsForward: 1042,
     epsForwardNote: '以指數點位除以Forward P/E反推估算，非官方直接公布數字',
+    epsLastUpdated: '2026-07-20',
     peRange: { low: 12.42, high: 38.78, median: 24.59, current: 31.89 },
     peChartUrl: 'https://www.gurufocus.com/economic_indicators/6778/nasdaq-100-pe-ratio',
     peChartSource: 'GuruFocus',
@@ -450,6 +451,7 @@ const initialIndexList = [
     epsTrailingNote: '以2026/7/17指數點位除以當時Trailing P/E反推估算',
     epsForward: 320,
     epsForwardNote: '2026年市場共識預估區間約$300–320，此處採區間上緣',
+    epsLastUpdated: '2026-07-20',
     peRange: { low: 15.0, high: 30.0, median: 22.95, current: 25.27 },
     peRangeNote: '低/高採用排除2008年獲利崩跌扭曲後的典型交易區間；中位數為近5年中位數，而非全歷史中位數(5.31–131.39區間對應之18.02)',
     peChartUrl: 'https://www.gurufocus.com/economic_indicators/57/sp-500-pe-ratio',
@@ -1194,7 +1196,7 @@ const seedTickers = {
     change: 0.48,
     changePct: 0.14,
     lastUpdated: '2026-07-20T09:00:00',
-    fundamentals: { pe: 40.37, peForward: 31.35, marketCap: '4.90T', eps: 8.27, epsForward: 8.51 },
+    fundamentals: { pe: 40.37, peForward: 31.35, marketCap: '4.90T', eps: 8.27, epsForward: 8.51, epsLastUpdated: '2026-07-20' },
     technicals: { ma50: 312.40, ma200: 268.75, rsi: 64 },
     news: [
       { headline: 'Apple 與美國司法部就反壟斷訴訟展開初步和解談判', source: 'Bloomberg' },
@@ -1524,7 +1526,7 @@ const seedTickers = {
     change: -4.59,
     changePct: -2.21,
     lastUpdated: '2026-07-20T09:00:00',
-    fundamentals: { pe: 31.06, peForward: 22.72, marketCap: '4.91T', eps: 6.53, epsForward: 8.29 },
+    fundamentals: { pe: 31.06, peForward: 22.72, marketCap: '4.91T', eps: 6.53, epsForward: 8.29, epsLastUpdated: '2026-07-20' },
     technicals: { ma50: 196.80, ma200: 178.30, rsi: 47 },
     news: [
       { headline: '半導體類股延續賣壓，費城半導體指數進入熊市', source: 'CNBC' },
@@ -1877,6 +1879,17 @@ function fmtTimeAgo(iso) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// EPS is only expected to change roughly quarterly, so its freshness is
+// judged in days against a ~90-day cadence rather than the hours-based
+// scale used for live price data.
+function epsAgeTone(dateStr) {
+  if (!dateStr) return { color: '#8A7A5C', days: null };
+  const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / 864e5);
+  if (days < 75) return { color: '#0F9D58', days };
+  if (days < 100) return { color: '#D89430', days };
+  return { color: '#E0483F', days };
+}
+
 // Custom candlestick renderer. recharts gives each Bar shape its own
 // pixel y/height for the bar's dataKey ("range"), where range = [low, high].
 // We map open/close/high/low into that same pixel space using the ratio
@@ -2070,6 +2083,15 @@ function TickerCard({ symbol, data, onRemove }) {
               <div style={{ marginTop: 6 }}>
                 <StatBold label="EPS" value={data.fundamentals.eps} />
                 <StatBold label="預估EPS" value={data.fundamentals.epsForward} />
+                {data.fundamentals.epsLastUpdated && (() => {
+                  const tone = epsAgeTone(data.fundamentals.epsLastUpdated);
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, color: tone.color }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.color, display: 'inline-block' }} />
+                      EPS 更新於 {tone.days} 天前{tone.days >= 75 ? '（建議更新）' : ''}
+                    </div>
+                  );
+                })()}
               </div>
               <button
                 onClick={() => setShowFundNote(s => !s)}
@@ -2244,6 +2266,15 @@ function IndexPanel({ data }) {
             <div style={{ marginTop: 12 }}>
               <StatBold label="Trailing EPS（估）" value={data.epsTrailing} />
               <StatBold label="預估今年EPS" value={data.epsForward} />
+              {data.epsLastUpdated && (() => {
+                const tone = epsAgeTone(data.epsLastUpdated);
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: tone.color }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: tone.color, display: 'inline-block' }} />
+                    EPS 更新於 {tone.days} 天前{tone.days >= 75 ? '（建議請 Claude 更新）' : ''}
+                  </div>
+                );
+              })()}
             </div>
 
             <button
