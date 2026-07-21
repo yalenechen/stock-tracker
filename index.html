@@ -511,6 +511,14 @@ function computePE(price, eps) {
   return Number((price / eps).toFixed(2));
 }
 
+// Fed-model style target price: implied fair P/E = 1 / fed funds rate,
+// multiplied by this year's forward EPS estimate.
+function computeTargetPrice(epsForward, fedRateEffectivePct) {
+  if (epsForward == null || !fedRateEffectivePct) return null;
+  const impliedPE = 100 / fedRateEffectivePct;
+  return Number((impliedPE * epsForward).toFixed(2));
+}
+
 function timeAgoTone(iso) {
   const hrs = (Date.now() - new Date(iso).getTime()) / 36e5;
   if (hrs < 6) return { label: 'fresh', color: '#0F9D58' };
@@ -596,6 +604,7 @@ function CandlestickChart({ data, height = 140 }) {
 
 function TickerCard({ symbol, data, onRemove }) {
   const [expanded, setExpanded] = useState(false);
+  const [showFundNote, setShowFundNote] = useState(false);
   const isUp = data.change >= 0;
   const tone = timeAgoTone(data.lastUpdated);
   const sparkData = data.history.map(d => ({ ...d, range: [d.l, d.h] }));
@@ -682,11 +691,26 @@ function TickerCard({ symbol, data, onRemove }) {
               <Stat label="本益比 (Trailing P/E)" value={computePE(data.price, data.fundamentals.eps)} />
               <Stat label="Forward P/E" value={computePE(data.price, data.fundamentals.epsForward)} />
               <Stat label="市值" value={data.fundamentals.marketCap} />
-              <Stat label="EPS" value={data.fundamentals.eps} />
-              <Stat label="預估EPS" value={data.fundamentals.epsForward} />
-              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 4 }}>
-                P/E 隨即時股價自動計算 · EPS 由 Claude 每季更新
+              <div style={{ marginTop: 6 }}>
+                <StatBold label="EPS" value={data.fundamentals.eps} />
+                <StatBold label="預估EPS" value={data.fundamentals.epsForward} />
               </div>
+              <button
+                onClick={() => setShowFundNote(s => !s)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4, marginTop: 8,
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontFamily: 'Inter, sans-serif', fontSize: 13, color: '#8A7A5C',
+                }}
+              >
+                {showFundNote ? <ChevronUp size={12} color="#8A7A5C" /> : <ChevronDown size={12} color="#8A7A5C" />}
+                {showFundNote ? '隱藏說明' : '顯示說明'}
+              </button>
+              {showFundNote && (
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, color: '#8A7A5C', lineHeight: 1.5, marginTop: 4 }}>
+                  P/E 隨即時股價自動計算 · EPS 由 Claude 每季更新
+                </div>
+              )}
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -782,7 +806,9 @@ function FedRateBanner({ data }) {
 
 function IndexPanel({ data }) {
   const [expanded, setExpanded] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const isUp = data.change >= 0;
+  const targetPrice = computeTargetPrice(data.epsForward, fedRate.effective);
   return (
     <div style={{
       background: '#FFFDF7', border: '1px solid #E8ECF0', borderRadius: 12,
@@ -832,37 +858,59 @@ function IndexPanel({ data }) {
               <PEHighlight label="Forward P/E" value={computePE(data.level, data.epsForward)} />
             </div>
 
-            <div style={{ marginTop: 10 }}>
-              <Stat label="Trailing EPS（估）" value={data.epsTrailing} />
-              {data.epsTrailingNote && (
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 2 }}>
-                  {data.epsTrailingNote}
-                </div>
-              )}
-            </div>
-
-            {data.epsForward != null && (
+            {targetPrice != null && (
               <div style={{ marginTop: 10 }}>
-                <Stat label="預估今年EPS" value={data.epsForward} />
-                {data.epsForwardNote && (
-                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 2 }}>
-                    {data.epsForwardNote}
-                  </div>
-                )}
+                <PEHighlight label="目標價（Fed Model）" value={targetPrice.toLocaleString()} />
               </div>
             )}
 
-            <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 6 }}>
-              P/E 隨即時股價自動計算 · EPS 數字由 Claude 每季更新
+            <div style={{ marginTop: 12 }}>
+              <StatBold label="Trailing EPS（估）" value={data.epsTrailing} />
+              <StatBold label="預估今年EPS" value={data.epsForward} />
             </div>
 
-            <div style={{ marginTop: 8 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowNotes(s => !s); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, marginTop: 10,
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C',
+              }}
+            >
+              {showNotes ? <ChevronUp size={13} color="#8A7A5C" /> : <ChevronDown size={13} color="#8A7A5C" />}
+              {showNotes ? '隱藏計算方式說明' : '顯示計算方式說明'}
+            </button>
+
+            {showNotes && (
+              <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                {data.epsTrailingNote && (
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5 }}>
+                    Trailing EPS：{data.epsTrailingNote}
+                  </div>
+                )}
+                {data.epsForwardNote && (
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5 }}>
+                    預估EPS：{data.epsForwardNote}
+                  </div>
+                )}
+                {targetPrice != null && (
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5 }}>
+                    目標價：以「1 ÷ 聯邦基金有效利率（{fedRate.effective}%）」當作隱含合理本益比，乘上預估今年EPS計算而得，屬簡化的Fed Model估值法，非分析師目標價共識。
+                  </div>
+                )}
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5 }}>
+                  P/E 隨即時股價自動計算 · EPS 數字由 Claude 每季更新
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12 }}>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.8, color: '#8A7A5C', marginBottom: 4 }}>
                 歷史本益比區間定位
               </div>
               <PERuler range={{ ...data.peRange, current: computePE(data.level, data.epsTrailing) }} />
-              {data.peRangeNote && (
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, color: '#6B5A3E', lineHeight: 1.5, marginTop: 6 }}>
+              {showNotes && data.peRangeNote && (
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5, marginTop: 6 }}>
                   {data.peRangeNote}
                 </div>
               )}
@@ -885,8 +933,8 @@ function IndexPanel({ data }) {
               <span style={{ color: '#A89878', fontSize: 16 }}>↗</span>
             </a>
 
-            {data.note && (
-              <div style={{ marginTop: 10, fontFamily: 'Inter, sans-serif', fontSize: 15, color: '#6B5A3E', lineHeight: 1.5 }}>
+            {showNotes && data.note && (
+              <div style={{ marginTop: 10, fontFamily: 'Inter, sans-serif', fontSize: 13.5, color: '#8A7A5C', lineHeight: 1.5 }}>
                 註：{data.note}
               </div>
             )}
@@ -944,6 +992,17 @@ function PEHighlight({ label, value }) {
       <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 26, fontWeight: 700, color: '#5C6B47' }}>
         {value}
       </div>
+    </div>
+  );
+}
+
+function StatBold({ label, value }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 700, color: '#3A2E20' }}>{label}</span>
+      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 17, fontWeight: 700, color: '#3A2E20' }}>
+        {value}
+      </span>
     </div>
   );
 }
